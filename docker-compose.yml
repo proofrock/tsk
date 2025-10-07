@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  tsk:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - tsk-data:/app
+    restart: unless-stopped
+
+volumes:
+  tsk-data:
