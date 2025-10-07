@@ -11,12 +11,24 @@
   let editingTask = $state(null);
   let toastMessage = $state('');
   let showToast = $state(false);
+  let version = $state('');
 
   const API_BASE = '/api';
 
   onMount(async () => {
     await loadCategories();
+    await loadVersion();
   });
+
+  async function loadVersion() {
+    try {
+      const res = await fetch(`${API_BASE}/version`);
+      const data = await res.json();
+      version = data.version;
+    } catch (err) {
+      console.error('Failed to load version:', err);
+    }
+  }
 
   async function loadCategories() {
     const res = await fetch(`${API_BASE}/categories`);
@@ -154,6 +166,12 @@
           />
         {/if}
       </main>
+
+      {#if version}
+        <footer class="mt-4 text-center">
+          <small class="text-secondary">v{version}</small>
+        </footer>
+      {/if}
     </div>
   </div>
 </div>

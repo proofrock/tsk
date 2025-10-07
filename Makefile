@@ -1,5 +1,7 @@
 .PHONY: all build frontend backend clean help
 
+VERSION ?= dev
+
 all: build
 
 build: frontend backend
@@ -14,7 +16,7 @@ frontend:
 
 backend:
 	@echo "Building backend..."
-	cd backend && go mod download && go build -o ../tsk
+	cd backend && go mod download && go build -ldflags="-X main.Version=$(VERSION)" -o ../tsk
 
 clean:
 	@echo "Cleaning build artifacts..."

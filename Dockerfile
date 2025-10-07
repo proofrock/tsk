@@ -10,6 +10,8 @@ RUN npm run build
 # Build backend
 FROM golang:latest AS backend-builder
 
+ARG VERSION=dev
+
 RUN apt-get update && apt-get install -y gcc sqlite3 libsqlite3-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -19,7 +21,7 @@ RUN go mod download
 COPY backend/ ./
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-RUN CGO_ENABLED=1 go build -o tsk
+RUN CGO_ENABLED=1 go build -ldflags="-X main.Version=${VERSION}" -o tsk
 
 # Runtime
 FROM debian:stable-slim

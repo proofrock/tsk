@@ -4,15 +4,21 @@ import (
 	"database/sql"
 	"embed"
 	"encoding/json"
+	"flag"
+	"fmt"
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gorilla/mux"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rs/cors"
 )
+
+// Version is set at build time via ldflags
+var Version = "dev"
 
 //go:embed frontend/dist
 var frontendFS embed.FS
@@ -50,6 +56,14 @@ type ReorderTasksRequest struct {
 var db *sql.DB
 
 func main() {
+	versionFlag := flag.Bool("version", false, "Print version and exit")
+	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("tsk version %s\n", Version)
+		os.Exit(0)
+	}
+
 	var err error
 	db, err = sql.Open("sqlite3", "./tsk.db")
 	if err != nil {
@@ -63,6 +77,7 @@ func main() {
 
 	// API routes
 	api := r.PathPrefix("/api").Subrouter()
+	api.HandleFunc("/version", getVersion).Methods("GET")
 	api.HandleFunc("/categories", getCategories).Methods("GET")
 	api.HandleFunc("/tasks", getTasks).Methods("GET")
 	api.HandleFunc("/tasks", createTask).Methods("POST")
@@ -118,6 +133,11 @@ func initDB() {
 	if err != nil {
 		log.Fatal(err)
 	}
+}
+
+func getVersion(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"version": Version})
 }
 
 func getCategories(w http.ResponseWriter, r *http.Request) {

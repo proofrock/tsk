@@ -19,13 +19,28 @@ A minimal, aesthetically pleasing task manager/todo list web application.
 
 ## Quick Start with Docker
 
-The easiest way to run tsk is using Docker Compose:
+The easiest way to run tsk is using Docker:
+
+```bash
+docker run -d -p 8080:8080 -v tsk-data:/app ghcr.io/proofrock/tsk:latest
+```
+
+Or use Docker Compose:
 
 ```bash
 docker-compose up -d
 ```
 
 The application will be available at `http://localhost:8080`
+
+### Docker Images
+
+Images are automatically built and pushed to GitHub Container Registry on each tagged release:
+
+- `ghcr.io/proofrock/tsk:latest` - Latest release
+- `ghcr.io/proofrock/tsk:v1.0.0` - Specific version
+- `ghcr.io/proofrock/tsk:1.0` - Major.minor version
+- `ghcr.io/proofrock/tsk:1` - Major version
 
 ## Development Setup
 
@@ -83,6 +98,18 @@ This will:
 Run the binary:
 ```bash
 ./tsk
+```
+
+Check version:
+```bash
+./tsk --version
+```
+
+### Building with Version
+
+To build with a specific version:
+```bash
+make build VERSION=v1.0.0
 ```
 
 ### Makefile Targets
@@ -155,6 +182,24 @@ The application runs on port 8080 by default. To change this, modify the `main.g
 ```go
 log.Fatal(http.ListenAndServe(":8080", handler))
 ```
+
+## Releases
+
+To create a new release:
+
+1. Tag the commit with a version following semver format:
+   ```bash
+   git tag v1.0.0
+   git push origin v1.0.0
+   ```
+
+2. GitHub Actions will automatically:
+   - Build the frontend
+   - Build the Docker image for linux/amd64 and linux/arm64
+   - Push the image to `ghcr.io/proofrock/tsk:v1.0.0`
+   - Update the `latest` tag
+
+The version number will be embedded in both the binary and the UI footer.
 
 ## License
 
