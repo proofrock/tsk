@@ -33,4 +33,4 @@ COPY --from=backend-builder /app/tsk .
 
 EXPOSE 8080
 
-CMD ["./tsk"]
+CMD ["./tsk", "--db", "/db/tsk.db"]

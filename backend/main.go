@@ -56,6 +56,7 @@ type ReorderTasksRequest struct {
 var db *sql.DB
 
 func main() {
+	dbPath := flag.String("db", "./trx.db", "Database file path")
 	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
@@ -65,7 +66,7 @@ func main() {
 	}
 
 	var err error
-	db, err = sql.Open("sqlite3", "./tsk.db")
+	db, err = sql.Open("sqlite3", *dbPath)
 	if err != nil {
 		log.Fatal(err)
 	}
