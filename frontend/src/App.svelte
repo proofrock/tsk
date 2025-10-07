@@ -2,12 +2,15 @@
   import { onMount } from 'svelte';
   import TaskList from './lib/TaskList.svelte';
   import AddTaskModal from './lib/AddTaskModal.svelte';
+  import Toast from './lib/Toast.svelte';
 
   let categories = $state([]);
   let tasks = $state([]);
   let selectedCategory = $state(null);
   let showAddModal = $state(false);
   let editingTask = $state(null);
+  let toastMessage = $state('');
+  let showToast = $state(false);
 
   const API_BASE = '/api';
 
@@ -71,7 +74,16 @@
     });
     if (res.ok) {
       await loadTasks();
+      showToastMessage('Task completed!');
     }
+  }
+
+  function showToastMessage(message) {
+    toastMessage = message;
+    showToast = true;
+    setTimeout(() => {
+      showToast = false;
+    }, 3000);
   }
 
   async function handleReorderTasks(taskIds) {
@@ -155,6 +167,8 @@
     onClose={closeModal}
   />
 {/if}
+
+<Toast message={toastMessage} show={showToast} />
 
 <style>
   .category-select {

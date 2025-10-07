@@ -1,9 +1,19 @@
 <script>
+  import { onMount } from 'svelte';
+
   let { categories, defaultCategory, task, onSave, onClose } = $props();
 
   let title = $state(task?.title || '');
   let description = $state(task?.description || '');
   let categoryId = $state(task?.category_id || defaultCategory?.id || 1);
+  let titleInput;
+
+  onMount(() => {
+    if (titleInput) {
+      titleInput.focus();
+      titleInput.select();
+    }
+  });
 
   function handleSubmit(e) {
     e.preventDefault();
@@ -61,6 +71,7 @@
               class="form-control bg-dark text-light border-secondary"
               id="title"
               bind:value={title}
+              bind:this={titleInput}
               placeholder="Enter task title"
               required
             />
