@@ -4,10 +4,10 @@ A minimal, aesthetically pleasing task manager/todo list web application.
 
 ## Features
 
-- ✅ Create tasks with title, description, and category
+- ✅ Create tasks and subtasks with title, description, and category
 - ✏️ Edit existing tasks
-- ✓ Complete tasks (automatically deleted when checked)
-- 🔄 Reorder tasks via drag and drop
+- ✓ Complete tasks
+- 🔄 Reorder (sub)tasks via drag and drop
 - 🏷️ Filter tasks by category
 - 🎨 Modern dark theme UI
 
@@ -22,13 +22,7 @@ A minimal, aesthetically pleasing task manager/todo list web application.
 The easiest way to run tsk is using Docker:
 
 ```bash
-docker run -d -p 8080:8080 -v tsk-data:/app ghcr.io/proofrock/tsk:latest
-```
-
-Or use Docker Compose:
-
-```bash
-docker-compose up -d
+docker run -d -p 8080:8080 --user 1000:1000 -v tsk-data:/db ghcr.io/proofrock/tsk:latest
 ```
 
 The application will be available at `http://localhost:8080`
@@ -39,8 +33,6 @@ Images are automatically built and pushed to GitHub Container Registry on each t
 
 - `ghcr.io/proofrock/tsk:latest` - Latest release
 - `ghcr.io/proofrock/tsk:v1.0.0` - Specific version
-- `ghcr.io/proofrock/tsk:1.0` - Major.minor version
-- `ghcr.io/proofrock/tsk:1` - Major version
 
 ## Development Setup
 
