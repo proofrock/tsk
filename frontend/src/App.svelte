@@ -12,6 +12,7 @@
   let toastMessage = $state('');
   let showToast = $state(false);
   let version = $state('');
+  let taskCounts = $state({});
 
   const API_BASE = '/api';
 
@@ -33,6 +34,7 @@
   async function loadCategories() {
     const res = await fetch(`${API_BASE}/categories`);
     categories = await res.json();
+    await loadTaskCounts();
     if (categories.length > 0 && !selectedCategory) {
       selectedCategory = categories[0];
       await loadTasks();
@@ -43,6 +45,16 @@
     if (!selectedCategory) return;
     const res = await fetch(`${API_BASE}/tasks?category_id=${selectedCategory.id}`);
     tasks = await res.json();
+  }
+
+  async function loadTaskCounts() {
+    const counts = {};
+    for (const category of categories) {
+      const res = await fetch(`${API_BASE}/tasks?category_id=${category.id}`);
+      const categoryTasks = await res.json();
+      counts[category.id] = categoryTasks.length;
+    }
+    taskCounts = counts;
   }
 
   async function handleCategoryChange(e) {
@@ -59,6 +71,7 @@
     });
     if (res.ok) {
       await loadTasks();
+      await loadTaskCounts();
       showAddModal = false;
     }
   }
@@ -75,6 +88,7 @@
     });
     if (res.ok) {
       await loadTasks();
+      await loadTaskCounts();
       showAddModal = false;
       editingTask = null;
     }
@@ -86,7 +100,8 @@
     });
     if (res.ok) {
       await loadTasks();
-      showToastMessage('Task completed!');
+      await loadTaskCounts();
+      showToastMessage('Task deleted!');
     }
   }
 
@@ -139,7 +154,9 @@
               onchange={handleCategoryChange}
             >
               {#each categories as category}
-                <option value={category.id}>{category.name}</option>
+                <option value={category.id}>
+                  {category.name} ({taskCounts[category.id] || 0})
+                </option>
               {/each}
             </select>
           </div>
