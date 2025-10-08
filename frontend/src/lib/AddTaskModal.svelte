@@ -1,12 +1,41 @@
 <script>
   import { onMount } from 'svelte';
 
-  let { categories, defaultCategory, task, onSave, onClose } = $props();
+  let { categories, defaultCategory, tasks, task, onSave, onClose } = $props();
 
   let title = $state(task?.title || '');
   let description = $state(task?.description || '');
   let categoryId = $state(task?.category_id || defaultCategory?.id || 1);
+  let parentId = $state(task?.parent_id || null);
   let titleInput;
+
+  // If task is a subtask, it can't change category
+  let isSubtask = $derived(task ? !!task.parent_id : false);
+
+  // Update category when parent changes (for new tasks with parent)
+  $effect(() => {
+    if (parentId) {
+      const parent = tasks.find(t => t.id === parentId);
+      if (parent) {
+        categoryId = parent.category_id;
+      }
+    }
+  });
+
+  // Helper to check if a task has subtasks
+  function hasSubtasks(taskId) {
+    return tasks.some(t => t.parent_id === taskId);
+  }
+
+  // Check if current task being edited has subtasks (can't become a subtask itself)
+  let taskHasSubtasks = $derived(task ? hasSubtasks(task.id) : false);
+
+  // Get available parent tasks (top-level tasks only, excluding the task being edited)
+  let availableParents = $derived(
+    tasks.filter(t =>
+      !t.parent_id && (!task || t.id !== task.id) && t.category_id === categoryId
+    )
+  );
 
   onMount(() => {
     if (titleInput) {
@@ -25,12 +54,14 @@
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
+        parent_id: parentId || null,
       });
     } else {
       onSave({
         title: title.trim(),
         description: description.trim(),
         category_id: categoryId,
+        parent_id: parentId || null,
       });
     }
   }
@@ -94,11 +125,33 @@
               id="category"
               class="form-select bg-dark text-light border-secondary"
               bind:value={categoryId}
+              disabled={isSubtask || !!parentId}
             >
               {#each categories as category}
                 <option value={category.id}>{category.name}</option>
               {/each}
             </select>
+            {#if isSubtask || parentId}
+              <small class="text-muted d-block mt-1">Subtasks inherit their parent's category.</small>
+            {/if}
+          </div>
+
+          <div class="mb-3">
+            <label for="parent" class="form-label">Parent Task (Optional)</label>
+            <select
+              id="parent"
+              class="form-select bg-dark text-light border-secondary"
+              bind:value={parentId}
+              disabled={taskHasSubtasks}
+            >
+              <option value={null}>(None)</option>
+              {#each availableParents as parent}
+                <option value={parent.id}>{parent.title}</option>
+              {/each}
+            </select>
+            {#if taskHasSubtasks}
+              <small class="text-muted d-block mt-1">This task has subtasks and cannot be made a subtask itself.</small>
+            {/if}
           </div>
         </div>
 

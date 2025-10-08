@@ -28,6 +28,7 @@ type Task struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	CategoryID  int    `json:"category_id"`
+	ParentID    *int   `json:"parent_id"`
 	Order       int    `json:"order"`
 	Completed   bool   `json:"completed"`
 }
@@ -41,16 +42,23 @@ type CreateTaskRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	CategoryID  int    `json:"category_id"`
+	ParentID    *int   `json:"parent_id"`
 }
 
 type UpdateTaskRequest struct {
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	CategoryID  int    `json:"category_id"`
+	ParentID    *int   `json:"parent_id"`
 }
 
 type ReorderTasksRequest struct {
-	TaskIDs []int `json:"task_ids"`
+	Tasks []TaskUpdate `json:"tasks"`
+}
+
+type TaskUpdate struct {
+	ID       int  `json:"id"`
+	ParentID *int `json:"parent_id"`
 }
 
 var db *sql.DB
@@ -115,18 +123,27 @@ func initDB() {
 		title TEXT NOT NULL,
 		description TEXT,
 		category_id INTEGER NOT NULL,
+		parent_id INTEGER,
 		task_order INTEGER NOT NULL DEFAULT 0,
 		completed BOOLEAN NOT NULL DEFAULT 0,
-		FOREIGN KEY (category_id) REFERENCES categories(id)
+		FOREIGN KEY (category_id) REFERENCES categories(id),
+		FOREIGN KEY (parent_id) REFERENCES tasks(id) ON DELETE CASCADE
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category_id);
 	CREATE INDEX IF NOT EXISTS idx_tasks_order ON tasks(category_id, task_order);
+	CREATE INDEX IF NOT EXISTS idx_tasks_parent ON tasks(parent_id);
 	`
 
 	_, err := db.Exec(schema)
 	if err != nil {
 		log.Fatal(err)
+	}
+
+	// Add parent_id column if it doesn't exist (migration for existing databases)
+	_, err = db.Exec("ALTER TABLE tasks ADD COLUMN parent_id INTEGER REFERENCES tasks(id) ON DELETE CASCADE")
+	if err != nil {
+		// Column already exists, ignore error
 	}
 
 	// Insert default category if not exists
@@ -171,12 +188,12 @@ func getTasks(w http.ResponseWriter, r *http.Request) {
 
 	if categoryID != "" {
 		rows, err = db.Query(
-			"SELECT id, title, description, category_id, task_order, completed FROM tasks WHERE category_id = ? AND completed = 0 ORDER BY task_order",
+			"SELECT id, title, description, category_id, parent_id, task_order, completed FROM tasks WHERE category_id = ? AND completed = 0 ORDER BY task_order",
 			categoryID,
 		)
 	} else {
 		rows, err = db.Query(
-			"SELECT id, title, description, category_id, task_order, completed FROM tasks WHERE completed = 0 ORDER BY category_id, task_order",
+			"SELECT id, title, description, category_id, parent_id, task_order, completed FROM tasks WHERE completed = 0 ORDER BY category_id, task_order",
 		)
 	}
 
@@ -189,7 +206,7 @@ func getTasks(w http.ResponseWriter, r *http.Request) {
 	tasks := []Task{}
 	for rows.Next() {
 		var t Task
-		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.CategoryID, &t.Order, &t.Completed); err != nil {
+		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.CategoryID, &t.ParentID, &t.Order, &t.Completed); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -207,17 +224,22 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get max order for this category
+	// Get max order for this category and parent
 	var maxOrder int
-	err := db.QueryRow("SELECT COALESCE(MAX(task_order), -1) FROM tasks WHERE category_id = ? AND completed = 0", req.CategoryID).Scan(&maxOrder)
+	var err error
+	if req.ParentID != nil {
+		err = db.QueryRow("SELECT COALESCE(MAX(task_order), -1) FROM tasks WHERE category_id = ? AND parent_id = ? AND completed = 0", req.CategoryID, req.ParentID).Scan(&maxOrder)
+	} else {
+		err = db.QueryRow("SELECT COALESCE(MAX(task_order), -1) FROM tasks WHERE category_id = ? AND parent_id IS NULL AND completed = 0", req.CategoryID).Scan(&maxOrder)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	result, err := db.Exec(
-		"INSERT INTO tasks (title, description, category_id, task_order) VALUES (?, ?, ?, ?)",
-		req.Title, req.Description, req.CategoryID, maxOrder+1,
+		"INSERT INTO tasks (title, description, category_id, parent_id, task_order) VALUES (?, ?, ?, ?, ?)",
+		req.Title, req.Description, req.CategoryID, req.ParentID, maxOrder+1,
 	)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -230,6 +252,7 @@ func createTask(w http.ResponseWriter, r *http.Request) {
 		Title:       req.Title,
 		Description: req.Description,
 		CategoryID:  req.CategoryID,
+		ParentID:    req.ParentID,
 		Order:       maxOrder + 1,
 		Completed:   false,
 	}
@@ -253,11 +276,35 @@ func updateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = db.Exec(
-		"UPDATE tasks SET title = ?, description = ?, category_id = ? WHERE id = ?",
-		req.Title, req.Description, req.CategoryID, id,
+	// Start transaction to update task and cascade category changes to subtasks
+	tx, err := db.Begin()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer tx.Rollback()
+
+	// Update the task
+	_, err = tx.Exec(
+		"UPDATE tasks SET title = ?, description = ?, category_id = ?, parent_id = ? WHERE id = ?",
+		req.Title, req.Description, req.CategoryID, req.ParentID, id,
 	)
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// If category changed, update all subtasks to the same category
+	_, err = tx.Exec(
+		"UPDATE tasks SET category_id = ? WHERE parent_id = ?",
+		req.CategoryID, id,
+	)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -297,15 +344,15 @@ func reorderTasks(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	stmt, err := tx.Prepare("UPDATE tasks SET task_order = ? WHERE id = ?")
+	stmt, err := tx.Prepare("UPDATE tasks SET task_order = ?, parent_id = ? WHERE id = ?")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	defer stmt.Close()
 
-	for i, taskID := range req.TaskIDs {
-		_, err := stmt.Exec(i, taskID)
+	for i, task := range req.Tasks {
+		_, err := stmt.Exec(i, task.ParentID, task.ID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

@@ -2,56 +2,149 @@
 
   let { tasks, onComplete, onEdit, onReorder } = $props();
 
+  // Export collapse functions for parent component
+  export { collapseAll, expandAll };
+
+  // Helper to check if a task has subtasks
+  function hasSubtasks(taskId) {
+    return tasks.some(t => t.parent_id === taskId);
+  }
+
   let draggedTask = $state(null);
   let dragOverIndex = $state(null);
-  let dropPosition = $state(null); // 'before' or 'after'
+  let dropPosition = $state(null); // 'before', 'after', 'child', or 'sibling-child'
+  let dropBeforeOrAfter = $state('after'); // For sibling-child positioning
   let selectedTasks = $state(new Set());
   let touchStartY = $state(0);
   let touchStartIndex = $state(null);
   let listElement = $state(null);
+  let collapsedParents = $state(new Set());
+
+  function toggleCollapse(taskId, e) {
+    e.stopPropagation();
+    const newCollapsed = new Set(collapsedParents);
+    if (newCollapsed.has(taskId)) {
+      newCollapsed.delete(taskId);
+    } else {
+      newCollapsed.add(taskId);
+    }
+    collapsedParents = newCollapsed;
+  }
+
+  function collapseAll() {
+    const parents = tasks.filter(t => hasSubtasks(t.id));
+    collapsedParents = new Set(parents.map(t => t.id));
+  }
+
+  function expandAll() {
+    collapsedParents = new Set();
+  }
+
+  function isCollapsed(taskId) {
+    return collapsedParents.has(taskId);
+  }
+
+  function shouldShowTask(task, index) {
+    if (!task.parent_id) return true;
+    return !isCollapsed(task.parent_id);
+  }
 
   // Mouse drag handlers
   function handleDragStart(task) {
     draggedTask = task;
   }
 
-  function handleDragOver(e, index) {
+  function handleDragOver(e, index, task) {
     e.preventDefault();
     const rect = e.currentTarget.getBoundingClientRect();
     const midpoint = rect.top + rect.height / 2;
+    const sixthWidth = rect.width / 6;
+    const offsetX = e.clientX - rect.left;
 
     dragOverIndex = index;
-    dropPosition = e.clientY < midpoint ? 'before' : 'after';
+
+    // Store before/after for later use
+    dropBeforeOrAfter = e.clientY < midpoint ? 'before' : 'after';
+
+    // Determine if we should make it a child or a sibling
+    // If target is a parent task and dragging to the right (> 1/6 width), make it a child
+    // But only if the dragged task doesn't have subtasks
+    if (offsetX > sixthWidth && !task.parent_id && draggedTask && !draggedTask.parent_id && !hasSubtasks(draggedTask.id)) {
+      dropPosition = 'child';
+    }
+    // If target is a subtask and dragging to the right (> 1/6 width), also make it a child of the same parent
+    else if (offsetX > sixthWidth && task.parent_id && draggedTask && !hasSubtasks(draggedTask.id)) {
+      dropPosition = 'sibling-child';
+    }
+    else {
+      dropPosition = dropBeforeOrAfter;
+    }
   }
 
   function handleDragEnd() {
     if (draggedTask && dragOverIndex !== null && dropPosition !== null) {
       const newTasks = [...tasks];
       const draggedIndex = newTasks.findIndex(t => t.id === draggedTask.id);
+      const targetTask = newTasks[dragOverIndex];
 
-      // Calculate target index based on drop position
-      let targetIndex = dragOverIndex;
-      if (dropPosition === 'after') {
-        targetIndex = dragOverIndex + 1;
-      }
+      if (dropPosition === 'child') {
+        // Make dragged task a child of target
+        draggedTask.parent_id = targetTask.id;
+        newTasks[draggedIndex] = {...draggedTask};
 
-      // Adjust if dragging from before to after the target
-      if (draggedIndex < targetIndex) {
-        targetIndex--;
-      }
+        // Reorder: remove from current position and place after target
+        newTasks.splice(draggedIndex, 1);
+        const newTargetIndex = newTasks.findIndex(t => t.id === targetTask.id);
+        newTasks.splice(newTargetIndex + 1, 0, draggedTask);
+      } else if (dropPosition === 'sibling-child') {
+        // Make dragged task a sibling of target (same parent)
+        draggedTask.parent_id = targetTask.parent_id;
+        newTasks[draggedIndex] = {...draggedTask};
 
-      if (draggedIndex !== targetIndex) {
+        // Calculate target index based on stored before/after
+        let targetIndex = dragOverIndex;
+        if (dropBeforeOrAfter === 'after') {
+          targetIndex = dragOverIndex + 1;
+        }
+
+        // Adjust if dragging from before to after the target
+        if (draggedIndex < targetIndex) {
+          targetIndex--;
+        }
+
         newTasks.splice(draggedIndex, 1);
         newTasks.splice(targetIndex, 0, draggedTask);
+      } else {
+        // If dropping in normal position and target is not a subtask, clear parent_id
+        if (!targetTask.parent_id && draggedTask.parent_id) {
+          draggedTask.parent_id = null;
+          newTasks[draggedIndex] = {...draggedTask};
+        }
 
-        const taskIds = newTasks.map(t => t.id);
-        onReorder(taskIds);
+        // Calculate target index based on drop position
+        let targetIndex = dragOverIndex;
+        if (dropPosition === 'after') {
+          targetIndex = dragOverIndex + 1;
+        }
+
+        // Adjust if dragging from before to after the target
+        if (draggedIndex < targetIndex) {
+          targetIndex--;
+        }
+
+        if (draggedIndex !== targetIndex || !targetTask.parent_id) {
+          newTasks.splice(draggedIndex, 1);
+          newTasks.splice(targetIndex, 0, draggedTask);
+        }
       }
+
+      onReorder(newTasks);
     }
 
     draggedTask = null;
     dragOverIndex = null;
     dropPosition = null;
+    dropBeforeOrAfter = 'after';
   }
 
   function handleDragLeave() {
@@ -77,13 +170,32 @@
       const taskElement = element?.closest('.task-card');
 
       if (taskElement) {
-        const newIndex = Array.from(taskElement.parentElement.children).indexOf(taskElement);
-        if (newIndex !== -1) {
+        const taskId = parseInt(taskElement.dataset.taskId);
+        const task = tasks.find(t => t.id === taskId);
+        const newIndex = Array.from(taskElement.parentElement.children).indexOf(taskElement.parentElement);
+
+        if (newIndex !== -1 && task) {
           const rect = taskElement.getBoundingClientRect();
           const midpoint = rect.top + rect.height / 2;
+          const quarterWidth = rect.width * 0.25;
+          const offsetX = touch.clientX - rect.left;
 
-          dragOverIndex = newIndex;
-          dropPosition = touch.clientY < midpoint ? 'before' : 'after';
+          dragOverIndex = tasks.findIndex(t => t.id === taskId);
+
+          const sixthWidth = rect.width / 6;
+
+          // If dragging more than 1/6 width to the right and target has no parent, make it a child
+          // But only if the dragged task doesn't have subtasks
+          if (offsetX > sixthWidth && !task.parent_id && draggedTask && !draggedTask.parent_id && !hasSubtasks(draggedTask.id)) {
+            dropPosition = 'child';
+          }
+          // If target is a subtask and dragging to the right (> 1/6 width), make it a sibling of the same parent
+          else if (offsetX > sixthWidth && task.parent_id && draggedTask && !hasSubtasks(draggedTask.id)) {
+            dropPosition = 'sibling-child';
+          }
+          else {
+            dropPosition = touch.clientY < midpoint ? 'before' : 'after';
+          }
         }
       }
     }
@@ -93,30 +205,67 @@
     if (draggedTask && dragOverIndex !== null && dropPosition !== null && touchStartIndex !== null) {
       const newTasks = [...tasks];
       const draggedIndex = touchStartIndex;
+      const targetTask = newTasks[dragOverIndex];
 
-      // Calculate target index based on drop position
-      let targetIndex = dragOverIndex;
-      if (dropPosition === 'after') {
-        targetIndex = dragOverIndex + 1;
-      }
+      if (dropPosition === 'child') {
+        // Make dragged task a child of target
+        draggedTask.parent_id = targetTask.id;
+        newTasks[draggedIndex] = {...draggedTask};
 
-      // Adjust if dragging from before to after the target
-      if (draggedIndex < targetIndex) {
-        targetIndex--;
-      }
-
-      if (draggedIndex !== targetIndex) {
+        // Reorder: remove from current position and place after target
         newTasks.splice(draggedIndex, 1);
-        newTasks.splice(targetIndex, 0, draggedTask);
+        const newTargetIndex = newTasks.findIndex(t => t.id === targetTask.id);
+        newTasks.splice(newTargetIndex + 1, 0, draggedTask);
+      } else if (dropPosition === 'sibling-child') {
+        // Make dragged task a sibling of target (same parent)
+        draggedTask.parent_id = targetTask.parent_id;
+        newTasks[draggedIndex] = {...draggedTask};
 
-        const taskIds = newTasks.map(t => t.id);
-        onReorder(taskIds);
+        // Calculate target index based on position (before/after)
+        let targetIndex = dragOverIndex;
+        // For touch, just use after for now (can enhance later)
+        targetIndex = dragOverIndex + 1;
+
+        // Adjust if dragging from before to after the target
+        if (draggedIndex < targetIndex) {
+          targetIndex--;
+        }
+
+        if (draggedIndex !== targetIndex) {
+          newTasks.splice(draggedIndex, 1);
+          newTasks.splice(targetIndex, 0, draggedTask);
+        }
+      } else {
+        // If dropping in normal position and target is not a subtask, clear parent_id
+        if (!targetTask.parent_id && draggedTask.parent_id) {
+          draggedTask.parent_id = null;
+          newTasks[draggedIndex] = {...draggedTask};
+        }
+
+        // Calculate target index based on drop position
+        let targetIndex = dragOverIndex;
+        if (dropPosition === 'after') {
+          targetIndex = dragOverIndex + 1;
+        }
+
+        // Adjust if dragging from before to after the target
+        if (draggedIndex < targetIndex) {
+          targetIndex--;
+        }
+
+        if (draggedIndex !== targetIndex || !targetTask.parent_id) {
+          newTasks.splice(draggedIndex, 1);
+          newTasks.splice(targetIndex, 0, draggedTask);
+        }
       }
+
+      onReorder(newTasks);
     }
 
     draggedTask = null;
     dragOverIndex = null;
     dropPosition = null;
+    dropBeforeOrAfter = 'after';
     touchStartIndex = null;
   }
 
@@ -194,15 +343,21 @@
 {:else}
   <div class="list-group" bind:this={listElement}>
     {#each tasks as task, index (task.id)}
-      <div class="task-wrapper" class:show-drop-line-before={dragOverIndex === index && dropPosition === 'before'} class:show-drop-line-after={dragOverIndex === index && dropPosition === 'after'}>
+      {#if shouldShowTask(task, index)}
+      <div class="task-wrapper"
+           class:show-drop-line-before={dragOverIndex === index && dropPosition === 'before'}
+           class:show-drop-line-after={dragOverIndex === index && dropPosition === 'after'}
+           class:show-drop-line-child={dragOverIndex === index && dropPosition === 'child'}
+           class:show-drop-line-sibling={dragOverIndex === index && dropPosition === 'sibling-child'}>
         <div
           class="list-group-item list-group-item-action bg-dark text-light border-secondary p-3 mb-2 draggable-item task-card"
           class:opacity-50={draggedTask?.id === task.id}
           class:border-danger={selectedTasks.has(task.id)}
+          class:subtask={task.parent_id}
           data-task-id={task.id}
           draggable="true"
           ondragstart={() => handleDragStart(task)}
-          ondragover={(e) => handleDragOver(e, index)}
+          ondragover={(e) => handleDragOver(e, index, task)}
           ondragend={handleDragEnd}
           ondragleave={handleDragLeave}
           ondrop={(e) => e.preventDefault()}
@@ -223,18 +378,50 @@
             </svg>
           </div>
 
-          <div class="form-check" style="flex-shrink: 0;">
-            <input
-              class="form-check-input"
-              type="checkbox"
-              checked={selectedTasks.has(task.id)}
-              onchange={() => toggleTaskSelection(task.id)}
-              id="task-{task.id}"
-            />
-            <label class="form-check-label visually-hidden" for="task-{task.id}">
-              Select task: {task.title}
-            </label>
-          </div>
+          {#if hasSubtasks(task.id)}
+            <button
+              class="btn btn-link text-secondary p-0 border-0 collapse-btn"
+              style="flex-shrink: 0; width: 20px; height: 20px;"
+              onclick={(e) => toggleCollapse(task.id, e)}
+              aria-label={isCollapsed(task.id) ? 'Expand subtasks' : 'Collapse subtasks'}
+            >
+              {#if isCollapsed(task.id)}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M6 4l4 4-4 4V4z"/>
+                </svg>
+              {:else}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+                  <path d="M4 6l4 4 4-4H4z"/>
+                </svg>
+              {/if}
+            </button>
+          {:else if !task.parent_id}
+            <div class="form-check" style="flex-shrink: 0;">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                checked={selectedTasks.has(task.id)}
+                onchange={() => toggleTaskSelection(task.id)}
+                id="task-{task.id}"
+              />
+              <label class="form-check-label visually-hidden" for="task-{task.id}">
+                Select task: {task.title}
+              </label>
+            </div>
+          {:else}
+            <div class="form-check" style="flex-shrink: 0;">
+              <input
+                class="form-check-input"
+                type="checkbox"
+                checked={selectedTasks.has(task.id)}
+                onchange={() => toggleTaskSelection(task.id)}
+                id="task-{task.id}"
+              />
+              <label class="form-check-label visually-hidden" for="task-{task.id}">
+                Select task: {task.title}
+              </label>
+            </div>
+          {/if}
 
           <div class="flex-grow-1 min-w-0 task-content">
             <h6 class="mb-1 text-truncate">{task.title}</h6>
@@ -245,6 +432,7 @@
         </div>
         </div>
       </div>
+      {/if}
     {/each}
   </div>
 {/if}
@@ -298,9 +486,39 @@
     box-shadow: 0 0 8px rgba(249, 115, 22, 0.6);
   }
 
+  .task-wrapper.show-drop-line-child::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 16.67%;
+    right: 0;
+    height: 3px;
+    background-color: #f97316;
+    border-radius: 2px;
+    z-index: 10;
+    box-shadow: 0 0 8px rgba(249, 115, 22, 0.6);
+  }
+
+  .task-wrapper.show-drop-line-sibling::after {
+    content: '';
+    position: absolute;
+    bottom: -4px;
+    left: 16.67%;
+    right: 0;
+    height: 3px;
+    background-color: #22c55e;
+    border-radius: 2px;
+    z-index: 10;
+    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  }
+
   .task-card {
     cursor: pointer;
     transition: all 0.25s ease;
+  }
+
+  .task-wrapper:has(.subtask) {
+    padding-left: 3rem;
   }
 
   .task-card:hover {
@@ -324,6 +542,17 @@
 
   .task-content {
     cursor: pointer;
+  }
+
+  .collapse-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.2s ease;
+  }
+
+  .collapse-btn:hover {
+    opacity: 0.7;
   }
 
   @media (hover: none) {
