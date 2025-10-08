@@ -154,9 +154,6 @@
 
   // Touch drag handlers
   function handleTouchStart(e, task, index) {
-    if (e.target.closest('.form-check') || e.target.closest('.task-content')) {
-      return;
-    }
     touchStartY = e.touches[0].clientY;
     touchStartIndex = index;
     draggedTask = task;
@@ -286,11 +283,17 @@
     selectedTasks = new Set();
   }
 
-  function handleEditClick(e, task) {
-    if (e.target.closest('.form-check') || e.target.closest('.drag-handle')) {
+  function handleRowClick(e, task) {
+    // Don't do anything if clicking on checkbox or edit button
+    if (e.target.closest('.form-check') || e.target.closest('.edit-btn') || e.target.closest('.collapse-btn')) {
       return;
     }
-    onEdit(task);
+
+    // Toggle collapse if parent task
+    if (hasSubtasks(task.id)) {
+      toggleCollapse(task.id, e);
+    }
+    // Non-parent tasks: do nothing (edit is handled by edit button)
   }
 
   $effect(() => {
@@ -300,25 +303,28 @@
     const taskCards = listElement.querySelectorAll('.task-card');
 
     taskCards.forEach((card, index) => {
-      const dragHandle = card.querySelector('.drag-handle');
-      if (!dragHandle) return;
-
       const taskId = parseInt(card.dataset.taskId);
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
 
-      const touchStartHandler = (e) => handleTouchStart(e, task, index);
+      const touchStartHandler = (e) => {
+        // Don't start drag if touching checkbox, edit button, or collapse button
+        if (e.target.closest('.form-check') || e.target.closest('.edit-btn') || e.target.closest('.collapse-btn')) {
+          return;
+        }
+        handleTouchStart(e, task, index);
+      };
       const touchMoveHandler = (e) => handleTouchMove(e, index);
       const touchEndHandler = handleTouchEnd;
 
-      dragHandle.addEventListener('touchstart', touchStartHandler, { passive: false });
-      dragHandle.addEventListener('touchmove', touchMoveHandler, { passive: false });
-      dragHandle.addEventListener('touchend', touchEndHandler, { passive: false });
+      card.addEventListener('touchstart', touchStartHandler, { passive: false });
+      card.addEventListener('touchmove', touchMoveHandler, { passive: false });
+      card.addEventListener('touchend', touchEndHandler, { passive: false });
 
       cleanup.push(() => {
-        dragHandle.removeEventListener('touchstart', touchStartHandler);
-        dragHandle.removeEventListener('touchmove', touchMoveHandler);
-        dragHandle.removeEventListener('touchend', touchEndHandler);
+        card.removeEventListener('touchstart', touchStartHandler);
+        card.removeEventListener('touchmove', touchMoveHandler);
+        card.removeEventListener('touchend', touchEndHandler);
       });
     });
 
@@ -361,23 +367,13 @@
           ondragend={handleDragEnd}
           ondragleave={handleDragLeave}
           ondrop={(e) => e.preventDefault()}
-          onclick={(e) => handleEditClick(e, task)}
+          onclick={(e) => handleRowClick(e, task)}
+          onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && handleRowClick(e, task)}
+          style="cursor: {hasSubtasks(task.id) ? 'pointer' : 'grab'};"
           role="button"
           tabindex="0"
-          onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && !e.target.closest('.form-check') && onEdit(task)}
         >
         <div class="d-flex align-items-center gap-2 gap-md-3">
-          <div class="drag-handle text-secondary" style="cursor: move; flex-shrink: 0; touch-action: none;">
-            <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
-              <circle cx="6" cy="4" r="1.5"/>
-              <circle cx="10" cy="4" r="1.5"/>
-              <circle cx="6" cy="8" r="1.5"/>
-              <circle cx="10" cy="8" r="1.5"/>
-              <circle cx="6" cy="12" r="1.5"/>
-              <circle cx="10" cy="12" r="1.5"/>
-            </svg>
-          </div>
-
           {#if hasSubtasks(task.id)}
             <button
               class="btn btn-link text-secondary p-0 border-0 collapse-btn"
@@ -429,6 +425,18 @@
               <p class="mb-0 text-secondary small text-truncate-2">{task.description}</p>
             {/if}
           </div>
+
+          <button
+            class="btn btn-link text-secondary p-0 border-0 edit-btn"
+            style="flex-shrink: 0;"
+            onclick={(e) => { e.stopPropagation(); onEdit(task); }}
+            aria-label="Edit task"
+            title="Edit task"
+          >
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M12.146.146a.5.5 0 0 1 .708 0l3 3a.5.5 0 0 1 0 .708l-10 10a.5.5 0 0 1-.168.11l-5 2a.5.5 0 0 1-.65-.65l2-5a.5.5 0 0 1 .11-.168l10-10zM11.207 2.5 13.5 4.793 14.793 3.5 12.5 1.207 11.207 2.5zm1.586 3L10.5 3.207 4 9.707V10h.5a.5.5 0 0 1 .5.5v.5h.5a.5.5 0 0 1 .5.5v.5h.293l6.5-6.5zm-9.761 5.175-.106.106-1.528 3.821 3.821-1.528.106-.106A.5.5 0 0 1 5 12.5V12h-.5a.5.5 0 0 1-.5-.5V11h-.5a.5.5 0 0 1-.468-.325z"/>
+            </svg>
+          </button>
         </div>
         </div>
       </div>
@@ -513,7 +521,6 @@
   }
 
   .task-card {
-    cursor: pointer;
     transition: all 0.25s ease;
   }
 
@@ -527,21 +534,12 @@
     box-shadow: 0 2px 8px rgba(249, 115, 22, 0.1);
   }
 
-  .task-card:hover .drag-handle {
-    opacity: 1;
-  }
-
   .task-card.border-danger {
     border-width: 2px !important;
   }
 
-  .drag-handle {
-    opacity: 0.3;
-    transition: opacity 0.2s ease;
-  }
-
   .task-content {
-    cursor: pointer;
+    pointer-events: none;
   }
 
   .collapse-btn {
@@ -555,9 +553,11 @@
     opacity: 0.7;
   }
 
-  @media (hover: none) {
-    .drag-handle {
-      opacity: 1;
-    }
+  .edit-btn {
+    transition: opacity 0.2s ease;
+  }
+
+  .edit-btn:hover {
+    opacity: 0.7;
   }
 </style>
