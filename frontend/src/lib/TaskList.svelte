@@ -159,12 +159,16 @@
 
   // Touch drag handlers
   function handleTouchStart(e, task, index) {
+    // Don't start drag if touching interactive elements
+    if (e.target.closest('.form-check') || e.target.closest('.edit-btn') || e.target.closest('.collapse-btn')) {
+      return;
+    }
     touchStartY = e.touches[0].clientY;
     touchStartIndex = index;
     draggedTask = task;
   }
 
-  function handleTouchMove(e, index) {
+  function handleTouchMove(e) {
     if (draggedTask && touchStartIndex !== null) {
       e.preventDefault();
       const touch = e.touches[0];
@@ -174,17 +178,18 @@
       if (taskElement) {
         const taskId = parseInt(taskElement.dataset.taskId);
         const task = tasks.find(t => t.id === taskId);
-        const newIndex = Array.from(taskElement.parentElement.children).indexOf(taskElement.parentElement);
 
-        if (newIndex !== -1 && task) {
+        if (task) {
           const rect = taskElement.getBoundingClientRect();
           const midpoint = rect.top + rect.height / 2;
-          const quarterWidth = rect.width * 0.25;
           const offsetX = touch.clientX - rect.left;
 
           dragOverIndex = tasks.findIndex(t => t.id === taskId);
 
           const sixthWidth = rect.width / 6;
+
+          // Store before/after for later use
+          dropBeforeOrAfter = touch.clientY < midpoint ? 'before' : 'after';
 
           // If dragging more than 1/6 width to the right and target has no parent, make it a child
           // But only if the dragged task doesn't have subtasks
@@ -196,7 +201,7 @@
             dropPosition = 'sibling-child';
           }
           else {
-            dropPosition = touch.clientY < midpoint ? 'before' : 'after';
+            dropPosition = dropBeforeOrAfter;
           }
         }
       }
@@ -223,10 +228,11 @@
         draggedTask.parent_id = targetTask.parent_id;
         newTasks[draggedIndex] = {...draggedTask};
 
-        // Calculate target index based on position (before/after)
+        // Calculate target index based on stored before/after
         let targetIndex = dragOverIndex;
-        // For touch, just use after for now (can enhance later)
-        targetIndex = dragOverIndex + 1;
+        if (dropBeforeOrAfter === 'after') {
+          targetIndex = dragOverIndex + 1;
+        }
 
         // Adjust if dragging from before to after the target
         if (draggedIndex < targetIndex) {
@@ -307,19 +313,18 @@
     const cleanup = [];
     const taskCards = listElement.querySelectorAll('.task-card');
 
-    taskCards.forEach((card, index) => {
+    taskCards.forEach((card) => {
       const taskId = parseInt(card.dataset.taskId);
       const task = tasks.find(t => t.id === taskId);
       if (!task) return;
 
+      // Get the actual index in the tasks array
+      const taskIndex = tasks.findIndex(t => t.id === taskId);
+
       const touchStartHandler = (e) => {
-        // Don't start drag if touching checkbox, edit button, or collapse button
-        if (e.target.closest('.form-check') || e.target.closest('.edit-btn') || e.target.closest('.collapse-btn')) {
-          return;
-        }
-        handleTouchStart(e, task, index);
+        handleTouchStart(e, task, taskIndex);
       };
-      const touchMoveHandler = (e) => handleTouchMove(e, index);
+      const touchMoveHandler = (e) => handleTouchMove(e);
       const touchEndHandler = handleTouchEnd;
 
       card.addEventListener('touchstart', touchStartHandler, { passive: false });
