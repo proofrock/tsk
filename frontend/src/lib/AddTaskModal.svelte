@@ -3,28 +3,80 @@
 
   let { categories, defaultCategory, tasks, task, onSave, onClose } = $props();
 
+  const API_BASE = '/api';
+
   let title = $state(task?.title || '');
   let description = $state(task?.description || '');
   let categoryId = $state(task?.category_id || defaultCategory?.id || 1);
   let parentId = $state(task?.parent_id || null);
   let titleInput;
+  let allCategoryTasks = $state(tasks); // Tasks for the currently selected category in modal
 
   // If task is a subtask, it can't change category
   let isSubtask = $derived(task ? !!task.parent_id : false);
 
-  // Update category when parent changes (for new tasks with parent)
+  // Track last known values to detect user-initiated changes
+  let lastParentId = $state(null);
+  let lastCategoryId = $state(null);
+
+  // Initialize tracking variables on first run
   $effect(() => {
-    if (parentId) {
-      const parent = tasks.find(t => t.id === parentId);
-      if (parent) {
-        categoryId = parent.category_id;
+    if (lastCategoryId === null) {
+      lastCategoryId = categoryId;
+      lastParentId = parentId;
+    }
+  });
+
+  // Handle parent selection change
+  $effect(() => {
+    // User changed parent selection
+    if (parentId !== lastParentId) {
+      const previousParent = lastParentId;
+      lastParentId = parentId;
+
+      if (parentId) {
+        // Parent was selected - update category to match
+        const parent = allCategoryTasks.find(t => t.id === parentId);
+        if (parent && parent.category_id !== categoryId) {
+          categoryId = parent.category_id;
+          lastCategoryId = categoryId;
+        }
+      }
+      // Parent was deselected - keep current category
+    }
+  });
+
+  // Handle category change
+  $effect(() => {
+    // User changed category manually
+    if (categoryId !== lastCategoryId && lastCategoryId !== null) {
+      lastCategoryId = categoryId;
+
+      // If parent doesn't belong to new category, reset it
+      if (parentId && !isSubtask) {
+        const parent = allCategoryTasks.find(t => t.id === parentId);
+        if (!parent || parent.category_id !== categoryId) {
+          parentId = null;
+          lastParentId = null;
+        }
       }
     }
   });
 
+  // Fetch tasks for the selected category when it changes
+  $effect(() => {
+    async function fetchCategoryTasks() {
+      if (!isSubtask && categoryId) {
+        const res = await fetch(`${API_BASE}/tasks?category_id=${categoryId}`);
+        allCategoryTasks = await res.json();
+      }
+    }
+    fetchCategoryTasks();
+  });
+
   // Helper to check if a task has subtasks
   function hasSubtasks(taskId) {
-    return tasks.some(t => t.parent_id === taskId);
+    return allCategoryTasks.some(t => t.parent_id === taskId);
   }
 
   // Check if current task being edited has subtasks (can't become a subtask itself)
@@ -32,7 +84,7 @@
 
   // Get available parent tasks (top-level tasks only, excluding the task being edited)
   let availableParents = $derived(
-    tasks.filter(t =>
+    allCategoryTasks.filter(t =>
       !t.parent_id && (!task || t.id !== task.id) && t.category_id === categoryId
     )
   );
@@ -125,13 +177,13 @@
               id="category"
               class="form-select bg-dark text-light border-secondary"
               bind:value={categoryId}
-              disabled={isSubtask || !!parentId}
+              disabled={isSubtask}
             >
               {#each categories as category}
                 <option value={category.id}>{category.name}</option>
               {/each}
             </select>
-            {#if isSubtask || parentId}
+            {#if isSubtask}
               <small class="text-muted d-block mt-1">Subtasks inherit their parent's category.</small>
             {/if}
           </div>
