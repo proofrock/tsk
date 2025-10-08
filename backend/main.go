@@ -34,8 +34,9 @@ type Task struct {
 }
 
 type Category struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default"`
 }
 
 type CreateTaskRequest struct {
@@ -115,7 +116,8 @@ func initDB() {
 	schema := `
 	CREATE TABLE IF NOT EXISTS categories (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		name TEXT NOT NULL UNIQUE
+		name TEXT NOT NULL UNIQUE,
+		is_default BOOLEAN NOT NULL DEFAULT 0
 	);
 
 	CREATE TABLE IF NOT EXISTS tasks (
@@ -146,8 +148,14 @@ func initDB() {
 		// Column already exists, ignore error
 	}
 
+	// Add is_default column if it doesn't exist (migration for existing databases)
+	_, err = db.Exec("ALTER TABLE categories ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT 0")
+	if err != nil {
+		// Column already exists, ignore error
+	}
+
 	// Insert default category if not exists
-	_, err = db.Exec("INSERT OR IGNORE INTO categories (id, name) VALUES (1, 'General')")
+	_, err = db.Exec("INSERT OR IGNORE INTO categories (id, name, is_default) VALUES (1, 'General', 1)")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -159,7 +167,7 @@ func getVersion(w http.ResponseWriter, r *http.Request) {
 }
 
 func getCategories(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT id, name FROM categories ORDER BY name")
+	rows, err := db.Query("SELECT id, name, is_default FROM categories ORDER BY name")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -169,7 +177,7 @@ func getCategories(w http.ResponseWriter, r *http.Request) {
 	categories := []Category{}
 	for rows.Next() {
 		var c Category
-		if err := rows.Scan(&c.ID, &c.Name); err != nil {
+		if err := rows.Scan(&c.ID, &c.Name, &c.IsDefault); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

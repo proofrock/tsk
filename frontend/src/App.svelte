@@ -37,7 +37,8 @@
     categories = await res.json();
     await loadTaskCounts();
     if (categories.length > 0 && !selectedCategory) {
-      selectedCategory = categories[0];
+      // Select default category or fall back to first
+      selectedCategory = categories.find(c => c.is_default) || categories[0];
       await loadTasks();
     }
   }
