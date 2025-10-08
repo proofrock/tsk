@@ -10,6 +10,11 @@
     return tasks.some(t => t.parent_id === taskId);
   }
 
+  // Helper to count subtasks
+  function countSubtasks(taskId) {
+    return tasks.filter(t => t.parent_id === taskId).length;
+  }
+
   let draggedTask = $state(null);
   let dragOverIndex = $state(null);
   let dropPosition = $state(null); // 'before', 'after', 'child', or 'sibling-child'
@@ -420,7 +425,12 @@
           {/if}
 
           <div class="flex-grow-1 min-w-0 task-content">
-            <h6 class="mb-1 text-truncate">{task.title}</h6>
+            <h6 class="mb-1 text-truncate">
+              {task.title}
+              {#if hasSubtasks(task.id)}
+                <span class="badge bg-secondary ms-2">{countSubtasks(task.id)}</span>
+              {/if}
+            </h6>
             {#if task.description}
               <p class="mb-0 text-secondary small text-truncate-2">{task.description}</p>
             {/if}
