@@ -64,7 +64,7 @@ type TaskUpdate struct {
 var db *sql.DB
 
 func main() {
-	dbPath := flag.String("db", "./trx.db", "Database file path")
+	dbPath := flag.String("db", "./tsk.db", "Database file path")
 	versionFlag := flag.Bool("version", false, "Print version and exit")
 	flag.Parse()
 
