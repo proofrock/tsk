@@ -1,6 +1,6 @@
 .PHONY: all build frontend backend clean help
 
-VERSION ?= dev
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 
 all: build
 

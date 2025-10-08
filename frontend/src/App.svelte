@@ -186,7 +186,7 @@
 
       {#if version}
         <footer class="mt-4 text-center">
-          <small class="text-secondary">v{version}</small>
+          <small class="text-secondary">{version}</small>
         </footer>
       {/if}
     </div>
