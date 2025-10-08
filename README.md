@@ -1,21 +1,27 @@
 # tsk
 
-A minimal, aesthetically pleasing task manager/todo list web application.
+A minimal, aesthetically pleasing task manager/todo list web application with subtask support.
 
 ## Features
 
-- ✅ Create tasks and subtasks with title, description, and category
-- ✏️ Edit existing tasks
-- ✓ Complete tasks
-- 🔄 Reorder (sub)tasks via drag and drop
-- 🏷️ Filter tasks by category
-- 🎨 Modern dark theme UI
+- ✅ **Create and manage tasks** - Add tasks with title, description, and category
+- 🌳 **Hierarchical subtasks** - Create one level of subtasks under parent tasks
+- ✏️ **Edit tasks** - Modify any task or subtask details
+- ✓ **Delete tasks** - Select and delete multiple tasks at once
+- 🔄 **Drag-and-drop reordering** - Reorder tasks and subtasks with mouse or touch
+- 📂 **Categories** - Organize tasks by category with configurable default
+- 🎯 **Task badges** - Parent tasks show the count of their subtasks
+- 👁️ **Collapse/expand** - Toggle subtask visibility individually or all at once
+- 🎨 **Modern dark theme** - Clean UI with orange accent color (#f97316)
+- 📱 **Fully responsive** - Mobile-first design with Bootstrap 5
+- 🚀 **Single binary deployment** - Embedded frontend and SQLite database
 
 ## Tech Stack
 
-- **Backend**: Go with embedded SQLite database
-- **Frontend**: Svelte 5 + Vite
+- **Backend**: Go 1.21+ with embedded SQLite database (CGO enabled)
+- **Frontend**: Svelte 5 + Vite with Bootstrap 5
 - **Deployment**: Docker & Docker Compose
+- **Build System**: Makefile with automated version management
 
 ## Quick Start with Docker
 
@@ -38,9 +44,10 @@ Images are automatically built and pushed to GitHub Container Registry on each t
 
 ### Prerequisites
 
-- Go 1.21+
+- Go 1.21+ (with CGO enabled)
 - Node.js 20+
 - npm
+- make (optional, for build automation)
 
 ### Backend Setup
 
@@ -99,9 +106,15 @@ Check version:
 
 ### Building with Version
 
-To build with a specific version:
+The version is automatically detected from git tags. To build with a specific version:
 ```bash
 make build VERSION=v1.0.0
+```
+
+Or create a git tag:
+```bash
+git tag v1.0.0
+make build
 ```
 
 ### Makefile Targets
@@ -114,7 +127,11 @@ make build VERSION=v1.0.0
 
 ## Managing Categories
 
-Categories are stored in the SQLite database. To add new categories:
+### Adding Categories via UI
+
+Categories must be added directly to the database. Once added, they appear in the category dropdown.
+
+### Adding Categories via Database
 
 1. Connect to the database:
 ```bash
@@ -123,35 +140,128 @@ sqlite3 tsk.db
 
 2. Insert a new category:
 ```sql
-INSERT INTO categories (name) VALUES ('Work');
-INSERT INTO categories (name) VALUES ('Personal');
-INSERT INTO categories (name) VALUES ('Shopping');
+INSERT INTO categories (name, is_default) VALUES ('Work', 0);
+INSERT INTO categories (name, is_default) VALUES ('Personal', 0);
+INSERT INTO categories (name, is_default) VALUES ('Shopping', 0);
 ```
 
-3. Restart the application to see the new categories.
+3. Set a category as default (optional):
+```sql
+UPDATE categories SET is_default = 0;  -- Unset all defaults first
+UPDATE categories SET is_default = 1 WHERE name = 'Work';  -- Set Work as default
+```
+
+4. Restart the application to see the new categories.
 
 ## Database Schema
 
 ### Categories Table
-- `id`: INTEGER PRIMARY KEY
-- `name`: TEXT (unique)
+- `id`: INTEGER PRIMARY KEY AUTOINCREMENT
+- `name`: TEXT NOT NULL UNIQUE
+- `is_default`: BOOLEAN NOT NULL DEFAULT 0
 
 ### Tasks Table
-- `id`: INTEGER PRIMARY KEY
-- `title`: TEXT
+- `id`: INTEGER PRIMARY KEY AUTOINCREMENT
+- `title`: TEXT NOT NULL
 - `description`: TEXT
-- `category_id`: INTEGER (foreign key)
-- `task_order`: INTEGER (for drag-drop ordering)
+- `category_id`: INTEGER (foreign key to categories)
+- `parent_id`: INTEGER (nullable, foreign key to tasks with CASCADE delete)
+- `order`: INTEGER (for drag-drop ordering)
 - `completed`: BOOLEAN
+
+### Task Hierarchy Rules
+
+- **One level only**: Subtasks cannot have their own subtasks
+- **Category inheritance**: Subtasks inherit their parent's category
+- **Cascade delete**: Deleting a parent deletes all its subtasks
+- **Cascade category changes**: Changing a parent's category updates all subtasks
+- **No circular references**: Tasks with subtasks cannot become subtasks
+
+## Database Migrations
+
+Migration scripts are provided for upgrading existing databases:
+
+### migrate.sql
+Adds subtask support (parent_id column):
+```bash
+sqlite3 tsk.db < migrate.sql
+```
+
+### migrate2.sql
+Adds default category support (is_default column):
+```bash
+sqlite3 tsk.db < migrate2.sql
+```
 
 ## API Endpoints
 
-- `GET /api/categories` - List all categories
-- `GET /api/tasks?category_id={id}` - List tasks by category
+### Categories
+- `GET /api/categories` - List all categories with default flag
+
+### Tasks
+- `GET /api/tasks?category_id={id}` - List tasks by category (includes subtasks)
 - `POST /api/tasks` - Create a new task
-- `PUT /api/tasks/{id}` - Update a task
+  ```json
+  {
+    "title": "Task title",
+    "description": "Optional description",
+    "category_id": 1,
+    "parent_id": null  // or parent task ID for subtasks
+  }
+  ```
+- `PUT /api/tasks/{id}` - Update a task (cascades category to subtasks)
+  ```json
+  {
+    "title": "Updated title",
+    "description": "Updated description",
+    "category_id": 1,
+    "parent_id": null
+  }
+  ```
 - `POST /api/tasks/{id}/complete` - Mark task as complete (deletes it)
-- `POST /api/tasks/reorder` - Reorder tasks
+- `POST /api/tasks/reorder` - Reorder tasks and update parent relationships
+  ```json
+  {
+    "tasks": [
+      {"id": 1, "parent_id": null},
+      {"id": 2, "parent_id": 1},
+      {"id": 3, "parent_id": null}
+    ]
+  }
+  ```
+
+### Version
+- `GET /api/version` - Get application version
+
+## User Interface Guide
+
+### Task Management
+
+- **Add Task**: Click the "Add Task" button in the header
+- **Edit Task**: Click the pencil icon on the right side of any task
+- **Delete Tasks**: Check the boxes of tasks to delete, then click "Delete X tasks"
+- **Reorder Tasks**: Drag and drop tasks with mouse or touch
+
+### Subtasks
+
+- **Create Subtask**: In the task modal, select a parent from the "Parent Task" dropdown
+- **Make Child**: Drag a task to the right edge (1/6 width) of another task
+- **Promote to Task**: Drag a subtask to the left area of any non-subtask
+- **Reorder within Subtasks**: Drag subtasks within the right edge zone (green indicator)
+- **Collapse/Expand**: Click the chevron button on parent tasks, or use toolbar buttons
+
+### Visual Indicators
+
+- **Orange line**: Normal task reordering or new child creation
+- **Green line**: Reordering within subtask group
+- **Badge**: Number on parent tasks shows subtask count
+- **Indentation**: Subtasks are indented 3rem from left
+
+### Drag-and-Drop Zones
+
+- **Left 5/6 of task**: Normal reordering (before/after)
+- **Right 1/6 of parent task**: Make dragged task a child
+- **Right 1/6 of subtask**: Reorder as sibling within same parent
 
 ## Docker Deployment
 
@@ -167,13 +277,31 @@ docker-compose up -d
 
 The application data (SQLite database) is persisted in a Docker volume named `tsk-data`.
 
+### Docker Volume Management
+
+To backup the database:
+```bash
+docker run --rm -v tsk-data:/db -v $(pwd):/backup alpine cp /db/tsk.db /backup/tsk-backup.db
+```
+
+To restore from backup:
+```bash
+docker run --rm -v tsk-data:/db -v $(pwd):/backup alpine cp /backup/tsk-backup.db /db/tsk.db
+```
+
 ## Configuration
+
+### Port Configuration
 
 The application runs on port 8080 by default. To change this, modify the `main.go` file:
 
 ```go
 log.Fatal(http.ListenAndServe(":8080", handler))
 ```
+
+### Database Location
+
+By default, the database is stored in `./tsk.db`. In Docker, this is mounted to `/db/tsk.db`.
 
 ## Releases
 
@@ -187,12 +315,30 @@ To create a new release:
 
 2. GitHub Actions will automatically:
    - Build the frontend
-   - Build the Docker image for linux/amd64 and linux/arm64
+   - Build the Docker image for linux/amd64
    - Push the image to `ghcr.io/proofrock/tsk:v1.0.0`
    - Update the `latest` tag
 
 The version number will be embedded in both the binary and the UI footer.
 
+## Troubleshooting
+
+### Build Issues
+
+- **CGO errors**: Ensure CGO is enabled (`CGO_ENABLED=1`) and build tools are installed
+- **SQLite errors**: Install SQLite development libraries (`libsqlite3-dev` on Debian/Ubuntu)
+- **Frontend build fails**: Clear `node_modules` and run `npm install` again
+
+### Runtime Issues
+
+- **Database locked**: Stop all instances of the application before running a new one
+- **Port already in use**: Change the port in `main.go` or stop the conflicting service
+- **Drag-and-drop not working on mobile**: Ensure you're not touching interactive elements (checkboxes, buttons)
+
 ## License
 
-MIT
+This project is licensed under the European Union Public Licence (EUPL) v. 1.2.
+
+See the [LICENSE](LICENSE) file for the full license text.
+
+The EUPL is a copyleft open-source license compatible with GPL, AGPL, MPL, LGPL, and other major open-source licenses. You can find more information about the EUPL at https://eupl.eu/

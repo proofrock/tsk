@@ -1,3 +1,9 @@
+<!--
+  Copyright (C) 2025 Germano Rizzo <oss /AT/ germanorizzo /DOT/ it>
+  Licensed under the EUPL v. 1.2
+  See LICENSE file for full license text
+-->
+
 <script>
 
   let { tasks, onComplete, onEdit, onReorder } = $props();
