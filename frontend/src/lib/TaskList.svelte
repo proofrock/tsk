@@ -30,6 +30,8 @@
   let touchStartIndex = $state(null);
   let listElement = $state(null);
   let collapsedParents = $state(new Set());
+  let longPressTimer = $state(null);
+  let touchDragEnabled = $state(false);
 
   function toggleCollapse(taskId, e) {
     e.stopPropagation();
@@ -169,13 +171,34 @@
     if (e.target.closest('.form-check') || e.target.closest('.edit-btn') || e.target.closest('.collapse-btn')) {
       return;
     }
+
     touchStartY = e.touches[0].clientY;
     touchStartIndex = index;
-    draggedTask = task;
+    touchDragEnabled = false;
+
+    // Start long press timer
+    longPressTimer = setTimeout(() => {
+      // Enable drag after 500ms
+      touchDragEnabled = true;
+      draggedTask = task;
+
+      // Vibrate if available (haptic feedback)
+      if (navigator.vibrate) {
+        navigator.vibrate(50);
+      }
+    }, 500);
   }
 
   function handleTouchMove(e) {
-    if (draggedTask && touchStartIndex !== null) {
+    // If not yet enabled for dragging, cancel the timer and allow normal scrolling
+    if (!touchDragEnabled && longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+      touchStartIndex = null;
+      return;
+    }
+
+    if (draggedTask && touchStartIndex !== null && touchDragEnabled) {
       e.preventDefault();
       const touch = e.touches[0];
       const element = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -215,7 +238,13 @@
   }
 
   function handleTouchEnd() {
-    if (draggedTask && dragOverIndex !== null && dropPosition !== null && touchStartIndex !== null) {
+    // Clear timer if still running
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = null;
+    }
+
+    if (draggedTask && dragOverIndex !== null && dropPosition !== null && touchStartIndex !== null && touchDragEnabled) {
       const newTasks = [...tasks];
       const draggedIndex = touchStartIndex;
       const targetTask = newTasks[dragOverIndex];
@@ -281,6 +310,7 @@
     dropPosition = null;
     dropBeforeOrAfter = 'after';
     touchStartIndex = null;
+    touchDragEnabled = false;
   }
 
   function toggleTaskSelection(taskId) {
