@@ -172,7 +172,12 @@
   <div class="row">
     <div class="col-12 col-lg-10 col-xl-8 mx-auto">
       <header class="mb-3 mb-md-4">
-        <h1 class="gradient-text fw-bold mb-3">tsk</h1>
+        <div class="d-flex align-items-baseline gap-2 mb-3">
+          <h1 class="gradient-text fw-bold mb-0">tsk</h1>
+          {#if version}
+            <small class="text-secondary">{version}</small>
+          {/if}
+        </div>
 
         <div class="row g-2 align-items-center">
           <div class="col-12 col-sm-6 col-md-4">
@@ -237,12 +242,6 @@
           />
         {/if}
       </main>
-
-      {#if version}
-        <footer class="mt-4 text-center">
-          <small class="text-secondary">{version}</small>
-        </footer>
-      {/if}
     </div>
   </div>
 </div>
