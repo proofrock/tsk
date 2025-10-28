@@ -79,8 +79,8 @@
 
     // Determine if we should make it a child or a sibling
     // If target is a parent task and dragging to the right (> 1/6 width), make it a child
-    // But only if the dragged task doesn't have subtasks
-    if (offsetX > sixthWidth && !task.parent_id && draggedTask && !draggedTask.parent_id && !hasSubtasks(draggedTask.id)) {
+    // But only if the dragged task doesn't have subtasks and is not the same task
+    if (offsetX > sixthWidth && !task.parent_id && draggedTask && !draggedTask.parent_id && !hasSubtasks(draggedTask.id) && draggedTask.id !== task.id) {
       dropPosition = 'child';
     }
     // If target is a subtask and dragging to the right (> 1/6 width), also make it a child of the same parent
@@ -198,8 +198,8 @@
           dropBeforeOrAfter = touch.clientY < midpoint ? 'before' : 'after';
 
           // If dragging more than 1/6 width to the right and target has no parent, make it a child
-          // But only if the dragged task doesn't have subtasks
-          if (offsetX > sixthWidth && !task.parent_id && draggedTask && !draggedTask.parent_id && !hasSubtasks(draggedTask.id)) {
+          // But only if the dragged task doesn't have subtasks and is not the same task
+          if (offsetX > sixthWidth && !task.parent_id && draggedTask && !draggedTask.parent_id && !hasSubtasks(draggedTask.id) && draggedTask.id !== task.id) {
             dropPosition = 'child';
           }
           // If target is a subtask and dragging to the right (> 1/6 width), make it a sibling of the same parent
