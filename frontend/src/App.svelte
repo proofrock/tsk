@@ -94,6 +94,7 @@
       await loadTasks();
       await loadTaskCounts();
       showAddModal = false;
+      showToastMessage('Task created!');
     }
   }
 
