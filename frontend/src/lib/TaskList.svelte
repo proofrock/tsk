@@ -172,6 +172,9 @@
       return;
     }
 
+    // Prevent text selection and context menu on iOS
+    e.preventDefault();
+
     touchStartY = e.touches[0].clientY;
     touchStartIndex = index;
     touchDragEnabled = false;
@@ -362,15 +365,21 @@
       };
       const touchMoveHandler = (e) => handleTouchMove(e);
       const touchEndHandler = handleTouchEnd;
+      const contextMenuHandler = (e) => {
+        // Prevent context menu on long press (iOS)
+        e.preventDefault();
+      };
 
       card.addEventListener('touchstart', touchStartHandler, { passive: false });
       card.addEventListener('touchmove', touchMoveHandler, { passive: false });
       card.addEventListener('touchend', touchEndHandler, { passive: false });
+      card.addEventListener('contextmenu', contextMenuHandler);
 
       cleanup.push(() => {
         card.removeEventListener('touchstart', touchStartHandler);
         card.removeEventListener('touchmove', touchMoveHandler);
         card.removeEventListener('touchend', touchEndHandler);
+        card.removeEventListener('contextmenu', contextMenuHandler);
       });
     });
 
@@ -573,6 +582,9 @@
 
   .task-card {
     transition: all 0.25s ease;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
   }
 
   .task-wrapper:has(.subtask) {
